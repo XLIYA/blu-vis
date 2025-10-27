@@ -9,7 +9,6 @@ import {
   BarChart3, 
   Sparkles, 
   Zap,
-  CheckCircle,
   TrendingUp,
   Layers,
   Download
