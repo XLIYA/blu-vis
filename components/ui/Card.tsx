@@ -9,7 +9,7 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
       <div
         ref={ref}
         className={cn(
-          'rounded-lg border border-gray-200 bg-white shadow-sm',
+          'rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm hover:shadow-md transition-shadow duration-200',
           className
         )}
         {...props}
@@ -47,7 +47,10 @@ export const CardTitle = forwardRef<HTMLHeadingElement, CardTitleProps>(
     return (
       <h3
         ref={ref}
-        className={cn('text-lg font-semibold leading-none', className)}
+        className={cn(
+          'text-lg font-semibold leading-none text-gray-900 dark:text-white',
+          className
+        )}
         {...props}
       >
         {children}
@@ -71,5 +74,23 @@ export const CardContent = forwardRef<HTMLDivElement, CardContentProps>(
 );
 
 CardContent.displayName = 'CardContent';
+
+export interface CardFooterProps extends HTMLAttributes<HTMLDivElement> {}
+
+export const CardFooter = forwardRef<HTMLDivElement, CardFooterProps>(
+  ({ className, children, ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn('flex items-center p-6 pt-0', className)}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+);
+
+CardFooter.displayName = 'CardFooter';
 
 export default Card;

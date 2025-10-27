@@ -1,17 +1,20 @@
 import type { Metadata } from 'next';
 import { Vazirmatn } from 'next/font/google';
-import { Providers } from './providers';
 import './globals.css';
+import Providers from './providers';
+
+
 
 const vazirmatn = Vazirmatn({
   subsets: ['arabic'],
-  variable: '--font-vazirmatn',
   display: 'swap',
+  variable: '--font-vazirmatn',
 });
 
 export const metadata: Metadata = {
-  title: 'داشبورد هوشمند',
-  description: 'تحلیل و بصری‌سازی داده‌های Excel و CSV',
+  title: 'BluVis - داشبورد هوشمند تحلیل داده',
+  description: 'پلتفرم قدرتمند برای تحلیل، بصری‌سازی و تمیزسازی داده‌ها',
+  keywords: 'داشبورد, تحلیل داده, بصری‌سازی, چارت, دیتا',
 };
 
 export default function RootLayout({
@@ -20,8 +23,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="fa" dir="rtl" className={vazirmatn.variable}>
-      <body className={vazirmatn.className}>
+    <html lang="fa" dir="rtl" suppressHydrationWarning>
+      <body className={`${vazirmatn.variable} antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>

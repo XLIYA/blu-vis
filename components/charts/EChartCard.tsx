@@ -4,6 +4,9 @@ import { useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import type { ChartType } from '@/lib/auto-chart-generator';
+import { generateChartOption } from '@/lib/auto-chart-generator';
+import { Download, Maximize2 } from 'lucide-react';
+import Button from '@/components/ui/Button';
 
 const ReactECharts = dynamic(() => import('echarts-for-react'), {
   ssr: false,
@@ -20,6 +23,8 @@ interface EChartCardProps {
   xColumn: string;
   yColumn: string;
   type: ChartType;
+  onExport?: () => void;
+  onFullscreen?: () => void;
 }
 
 export default function EChartCard({
@@ -28,100 +33,68 @@ export default function EChartCard({
   xColumn,
   yColumn,
   type,
+  onExport,
+  onFullscreen,
 }: EChartCardProps) {
   const option = useMemo(() => {
-    if (!data || data.length === 0) return {};
+    if (!data || data.length === 0) {
+      return {
+        title: {
+          text: 'داده‌ای برای نمایش وجود ندارد',
+          left: 'center',
+          top: 'center',
+          textStyle: {
+            color: '#999',
+            fontFamily: 'Vazirmatn',
+          },
+        },
+      };
+    }
 
-    // محدود کردن به 100 نقطه برای عملکرد بهتر
-    const sampleData = data.slice(0, 100);
-
-    const xData = sampleData.map((row) => row[xColumn] ?? '');
-    const yData = sampleData.map((row) => {
-      const val = parseFloat(row[yColumn]);
-      return isNaN(val) ? 0 : val;
+    return generateChartOption({
+      type,
+      xColumn,
+      yColumn,
+      title,
+      data,
     });
-
-    const baseOption = {
-      title: {
-        text: title,
-        textStyle: { fontFamily: 'Vazirmatn' },
-      },
-      tooltip: {
-        trigger: type === 'scatter' ? 'item' : 'axis',
-      },
-      grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
-        containLabel: true,
-      },
-      xAxis: {
-        type: type === 'scatter' ? 'value' : 'category',
-        data: type === 'scatter' ? undefined : xData,
-        name: xColumn,
-      },
-      yAxis: {
-        type: 'value',
-        name: yColumn,
-      },
-    };
-
-    if (type === 'bar') {
-      return {
-        ...baseOption,
-        series: [
-          {
-            type: 'bar',
-            data: yData,
-            itemStyle: { color: '#3b82f6' },
-          },
-        ],
-      };
-    }
-
-    if (type === 'line') {
-      return {
-        ...baseOption,
-        series: [
-          {
-            type: 'line',
-            data: yData,
-            smooth: true,
-            itemStyle: { color: '#10b981' },
-          },
-        ],
-      };
-    }
-
-    if (type === 'scatter') {
-      const scatterData = sampleData.map((row) => {
-        const x = parseFloat(row[xColumn]);
-        const y = parseFloat(row[yColumn]);
-        return [isNaN(x) ? 0 : x, isNaN(y) ? 0 : y];
-      });
-
-      return {
-        ...baseOption,
-        series: [
-          {
-            type: 'scatter',
-            data: scatterData,
-            itemStyle: { color: '#8b5cf6' },
-          },
-        ],
-      };
-    }
-
-    return baseOption;
   }, [data, xColumn, yColumn, type, title]);
 
   return (
-    <Card>
-      <CardHeader>
+    <Card className="overflow-hidden">
+      <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>{title}</CardTitle>
+        <div className="flex gap-2">
+          {onExport && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onExport}
+              className="p-2"
+              aria-label="دانلود چارت"
+            >
+              <Download className="h-4 w-4" />
+            </Button>
+          )}
+          {onFullscreen && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onFullscreen}
+              className="p-2"
+              aria-label="تمام صفحه"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
-        <ReactECharts option={option} style={{ height: '400px' }} />
+        <ReactECharts 
+          option={option} 
+          style={{ height: '400px', width: '100%' }} 
+          opts={{ renderer: 'canvas' }}
+        />
       </CardContent>
     </Card>
   );

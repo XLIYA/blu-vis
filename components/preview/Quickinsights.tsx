@@ -1,123 +1,212 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Lightbulb, AlertTriangle, CheckCircle } from 'lucide-react';
 import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import type { ColumnMeta } from '@/lib/format';
-import type { Insight } from '@/stores/dataStore';
-import { getFrequencyDistribution } from '@/lib/data-mining';
+import { ColumnMeta } from '@/lib/format';
+import { 
+  TrendingUp, 
+  TrendingDown, 
+  BarChart3, 
+  PieChart, 
+  AlertCircle,
+  CheckCircle,
+  Info
+} from 'lucide-react';
 
 interface QuickInsightsProps {
   data: any[];
   columns: ColumnMeta[];
 }
 
+interface Insight {
+  type: 'success' | 'warning' | 'info' | 'trend';
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  value?: string;
+}
+
 export default function QuickInsights({ data, columns }: QuickInsightsProps) {
-  const insights = useMemo(() => {
-    const results: Insight[] = [];
+  const insights = useMemo<Insight[]>(() => {
+    if (!data || data.length === 0 || !columns || columns.length === 0) {
+      return [];
+    }
 
-    if (data.length === 0) return results;
+    const insights: Insight[] = [];
+    const numericColumns = columns.filter((c) => c.type === 'number');
+    const categoricalColumns = columns.filter((c) => c.type === 'string');
 
-    // بررسی مقادیر مفقود
+    // 1. تعداد کل رکوردها
+    insights.push({
+      type: 'info',
+      icon: <BarChart3 className="h-5 w-5 text-blue-500" />,
+      title: 'تعداد کل رکوردها',
+      description: `مجموع ${data.length.toLocaleString('fa-IR')} ردیف داده`,
+      value: data.length.toLocaleString('fa-IR'),
+    });
+
+    // 2. تعداد ستون‌ها
+    insights.push({
+      type: 'info',
+      icon: <PieChart className="h-5 w-5 text-purple-500" />,
+      title: 'تعداد ستون‌ها',
+      description: `${columns.length} ستون شامل ${numericColumns.length} عددی و ${categoricalColumns.length} متنی`,
+      value: columns.length.toString(),
+    });
+
+    // 3. بررسی مقادیر خالی
     let totalMissing = 0;
     data.forEach((row) => {
-      Object.values(row).forEach((val) => {
-        if (val === null || val === undefined || val === '') {
+      Object.values(row).forEach((value) => {
+        if (value === null || value === undefined || value === '') {
           totalMissing++;
         }
       });
     });
 
-    const missingPercent = (totalMissing / (data.length * columns.length)) * 100;
-
-    if (missingPercent > 10) {
-      results.push({
+    if (totalMissing > 0) {
+      const missingPercent = ((totalMissing / (data.length * columns.length)) * 100).toFixed(1);
+      insights.push({
         type: 'warning',
-        title: 'مقادیر مفقود زیاد',
-        description: `${missingPercent.toFixed(1)}% از داده‌ها خالی هستند`,
-      });
-    } else if (missingPercent > 0) {
-      results.push({
-        type: 'info',
+        icon: <AlertCircle className="h-5 w-5 text-amber-500" />,
         title: 'مقادیر مفقود',
-        description: `${missingPercent.toFixed(1)}% از داده‌ها خالی هستند`,
+        description: `${totalMissing.toLocaleString('fa-IR')} سلول خالی (${missingPercent}% کل داده)`,
+        value: totalMissing.toLocaleString('fa-IR'),
+      });
+    } else {
+      insights.push({
+        type: 'success',
+        icon: <CheckCircle className="h-5 w-5 text-green-500" />,
+        title: 'کیفیت داده عالی',
+        description: 'هیچ مقدار مفقودی در داده وجود ندارد',
       });
     }
 
-    // بررسی تنوع داده در ستون‌های متنی
-    const stringColumns = columns.filter((c) => c.type === 'string');
-    if (stringColumns.length > 0) {
-      const firstStringCol = stringColumns[0].name;
-      const uniqueValues = new Set(data.map((row) => row[firstStringCol])).size;
-      const uniquePercent = (uniqueValues / data.length) * 100;
+    // 4. بررسی تکراری‌ها
+    const seen = new Set<string>();
+    let duplicates = 0;
+    data.forEach((row) => {
+      const key = JSON.stringify(row);
+      if (seen.has(key)) {
+        duplicates++;
+      } else {
+        seen.add(key);
+      }
+    });
 
-      if (uniquePercent < 10) {
-        const topValues = getFrequencyDistribution(data, firstStringCol, 3);
-        results.push({
-          type: 'info',
-          title: `ستون "${firstStringCol}" تنوع کمی دارد`,
-          description: `فقط ${uniqueValues} مقدار منحصر‌به‌فرد. رایج‌ترین: ${topValues.map((v) => v.value).join('، ')}`,
+    if (duplicates > 0) {
+      insights.push({
+        type: 'warning',
+        icon: <AlertCircle className="h-5 w-5 text-orange-500" />,
+        title: 'رکوردهای تکراری',
+        description: `${duplicates.toLocaleString('fa-IR')} ردیف تکراری شناسایی شد`,
+        value: duplicates.toLocaleString('fa-IR'),
+      });
+    }
+
+    // 5. تحلیل ستون‌های عددی
+    numericColumns.forEach((col) => {
+      const values = data
+        .map((row) => parseFloat(row[col.name]))
+        .filter((v) => !isNaN(v) && v !== null);
+
+      if (values.length > 0) {
+        const sum = values.reduce((a, b) => a + b, 0);
+        const avg = sum / values.length;
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+        const range = max - min;
+
+        // روند (مقایسه نیمه اول با نیمه دوم)
+        const mid = Math.floor(values.length / 2);
+        const firstHalf = values.slice(0, mid);
+        const secondHalf = values.slice(mid);
+        const avgFirst = firstHalf.reduce((a, b) => a + b, 0) / firstHalf.length;
+        const avgSecond = secondHalf.reduce((a, b) => a + b, 0) / secondHalf.length;
+        const trend = avgSecond > avgFirst;
+
+        insights.push({
+          type: 'trend',
+          icon: trend ? (
+            <TrendingUp className="h-5 w-5 text-green-500" />
+          ) : (
+            <TrendingDown className="h-5 w-5 text-red-500" />
+          ),
+          title: `تحلیل ${col.name}`,
+          description: `میانگین: ${avg.toFixed(2)} | دامنه: ${min.toFixed(2)} تا ${max.toFixed(2)} | روند: ${trend ? 'صعودی' : 'نزولی'}`,
+          value: avg.toFixed(2),
         });
       }
-    }
+    });
 
-    // بررسی ستون‌های عددی
-    const numericColumns = columns.filter((c) => c.type === 'number');
-    if (numericColumns.length > 0) {
-      results.push({
-        type: 'success',
-        title: 'ستون‌های عددی شناسایی شدند',
-        description: `${numericColumns.length} ستون عددی برای تحلیل آماری موجود است`,
-      });
-    }
+    // 6. تنوع داده در ستون‌های دسته‌ای
+    categoricalColumns.slice(0, 3).forEach((col) => {
+      const uniqueValues = new Set(data.map((row) => row[col.name])).size;
+      const diversity = ((uniqueValues / data.length) * 100).toFixed(1);
 
-    // بررسی تعداد ردیف‌ها
-    if (data.length > 10000) {
-      results.push({
+      insights.push({
         type: 'info',
-        title: 'دیتاست بزرگ',
-        description: `${data.length.toLocaleString('fa-IR')} ردیف - محاسبات ممکن است کمی زمان‌بر باشند`,
+        icon: <Info className="h-5 w-5 text-indigo-500" />,
+        title: `تنوع ${col.name}`,
+        description: `${uniqueValues.toLocaleString('fa-IR')} مقدار منحصر به فرد (${diversity}% تنوع)`,
+        value: uniqueValues.toLocaleString('fa-IR'),
       });
-    }
+    });
 
-    return results.slice(0, 5); // حداکثر 5 بینش
+    return insights.slice(0, 8); // محدود به 8 بینش
   }, [data, columns]);
 
   if (insights.length === 0) {
     return null;
   }
 
-  const icons = {
-    success: <CheckCircle className="h-5 w-5 text-green-500" />,
-    warning: <AlertTriangle className="h-5 w-5 text-yellow-500" />,
-    info: <Lightbulb className="h-5 w-5 text-blue-500" />,
-  };
-
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Lightbulb className="h-5 w-5" />
+          <BarChart3 className="h-5 w-5" />
           بینش‌های سریع
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="space-y-3">
-          {insights.map((insight, idx) => (
-            <div key={idx} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-              {icons[insight.type]}
-              <div className="flex-1">
-                <h4 className="font-medium text-sm text-gray-900">
-                  {insight.title}
-                </h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  {insight.description}
-                </p>
-              </div>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {insights.map((insight, index) => (
+            <InsightCard key={index} insight={insight} />
           ))}
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function InsightCard({ insight }: { insight: Insight }) {
+  const bgColors = {
+    success: 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800',
+    warning: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800',
+    info: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
+    trend: 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800',
+  };
+
+  return (
+    <div
+      className={`p-4 rounded-lg border ${bgColors[insight.type]} transition-all hover:shadow-md`}
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex-shrink-0 mt-0.5">{insight.icon}</div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-sm text-gray-900 dark:text-white mb-1">
+            {insight.title}
+          </h4>
+          <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+            {insight.description}
+          </p>
+          {insight.value && (
+            <p className="text-lg font-bold text-gray-900 dark:text-white mt-2">
+              {insight.value}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
