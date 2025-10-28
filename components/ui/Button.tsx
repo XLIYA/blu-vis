@@ -3,7 +3,7 @@ import { cn } from '@/lib/format';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'success';
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'lg' | 'icon';
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
@@ -34,6 +34,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             'px-3 py-1.5 text-sm': size === 'sm',
             'px-4 py-2 text-base': size === 'md',
             'px-6 py-3 text-lg': size === 'lg',
+            'h-9 w-9 p-0': size === "icon"
           },
           className
         )}
