@@ -24,8 +24,27 @@ export default function UploadDropzone({ onDataLoaded }: UploadDropzoneProps) {
         const ext = file.name.split('.').pop()?.toLowerCase();
 
         if (ext === 'csv' || ext === 'tsv') {
-          // پردازش CSV/TSV
-          const text = await file.text();
+          // پردازش CSV/TSV با رمزگذاری صحیح
+          const arrayBuffer = await file.arrayBuffer();
+          
+          // تشخیص encoding
+          let text: string;
+          try {
+            // ابتدا UTF-8 را امتحان کنید
+            const decoder = new TextDecoder('utf-8', { fatal: true });
+            text = decoder.decode(arrayBuffer);
+          } catch {
+            try {
+              // اگر UTF-8 کار نکرد، Windows-1256 (فارسی/عربی) را امتحان کنید
+              const decoder = new TextDecoder('windows-1256');
+              text = decoder.decode(arrayBuffer);
+            } catch {
+              // آخرین تلاش با ISO-8859-1
+              const decoder = new TextDecoder('iso-8859-1');
+              text = decoder.decode(arrayBuffer);
+            }
+          }
+
           const delimiter = ext === 'tsv' ? '\t' : detectDelimiter(text);
           const lines = text.split('\n').filter((line) => line.trim());
 
@@ -50,17 +69,26 @@ export default function UploadDropzone({ onDataLoaded }: UploadDropzoneProps) {
           onDataLoaded(rows, columns, file.name);
           showToast('success', `${rows.length.toLocaleString('fa-IR')} ردیف بارگذاری شد`);
         } else if (ext === 'xlsx' || ext === 'xls') {
-          // پردازش Excel با xlsx
+          // پردازش Excel با رمزگذاری صحیح
           const XLSX = await import('xlsx');
           const arrayBuffer = await file.arrayBuffer();
-          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          
+          // خواندن workbook با تنظیمات صحیح برای encoding
+          const workbook = XLSX.read(arrayBuffer, { 
+            type: 'array',
+            cellText: true,
+            cellDates: true,
+            codepage: 65001 // UTF-8
+          });
 
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
 
+          // تبدیل به JSON با حفظ encoding
           const jsonData = XLSX.utils.sheet_to_json(worksheet, {
             defval: '',
             raw: false,
+            dateNF: 'yyyy-mm-dd',
           });
 
           if (jsonData.length === 0) {
@@ -79,7 +107,7 @@ export default function UploadDropzone({ onDataLoaded }: UploadDropzoneProps) {
         }
       } catch (error) {
         console.error('خطا در پردازش فایل:', error);
-        showToast('error', 'خطا در بارگذاری فایل');
+        showToast('error', 'خطا در بارگذاری فایل. لطفاً فرمت فایل را بررسی کنید.');
       } finally {
         setIsProcessing(false);
       }
@@ -119,10 +147,10 @@ export default function UploadDropzone({ onDataLoaded }: UploadDropzoneProps) {
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
       className={cn(
-        'relative border-2 border-dashed rounded-lg p-12 transition-colors',
+        'relative border-2 border-dashed rounded-xl p-8 transition-all',
         isDragging
-          ? 'border-blue-500 bg-blue-50'
-          : 'border-gray-300 hover:border-gray-400'
+          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+          : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 bg-white dark:bg-gray-800'
       )}
     >
       <input
@@ -138,23 +166,23 @@ export default function UploadDropzone({ onDataLoaded }: UploadDropzoneProps) {
         htmlFor="file-upload"
         className="flex flex-col items-center cursor-pointer"
       >
-        <Upload className="h-12 w-12 text-gray-400 mb-4" />
-        <p className="text-lg font-medium text-gray-700 mb-2">
+        <Upload className="h-10 w-10 text-gray-400 dark:text-gray-500 mb-3" />
+        <p className="text-base font-medium text-gray-700 dark:text-gray-300 mb-1">
           {isProcessing ? 'در حال پردازش...' : 'فایل خود را اینجا رها کنید'}
         </p>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           یا کلیک کنید تا فایل را انتخاب کنید
         </p>
-        <p className="text-xs text-gray-400 mt-2">
-          فرمت‌های پشتیبانی: XLSX, XLS, CSV, TSV
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">
+          XLSX, XLS, CSV, TSV
         </p>
       </label>
 
       {isProcessing && (
-        <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+        <div className="absolute inset-0 bg-white/90 dark:bg-gray-800/90 flex items-center justify-center rounded-xl backdrop-blur-sm">
           <div className="flex flex-col items-center gap-2">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-            <p className="text-sm text-gray-600">در حال بارگذاری...</p>
+            <p className="text-sm text-gray-600 dark:text-gray-400">در حال بارگذاری...</p>
           </div>
         </div>
       )}

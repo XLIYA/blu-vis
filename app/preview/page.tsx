@@ -4,39 +4,129 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/Navigation';
 import UploadDropzone from '@/components/upload/UploadDropzone';
-import VirtualizedTable from '@/components/table/VirtualizedTable';
-import QuickInsights from '@/components/preview/Quickinsights';
-import DataCleaningDialog from '@/components/preview/Datacleaningdialog';
-import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+
 import Button from '@/components/ui/Button';
+import Card, { CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useDataStore } from '@/stores/dataStore';
 import { useToast } from '@/components/ui/toast';
 import { 
-  ArrowRight, 
+  Trash2, 
   Download, 
-  Sparkles, 
-  RefreshCw,
-  Trash2,
-  FileText,
-  TrendingUp
+  ArrowRight, 
+  FileSpreadsheet,
+  Sparkles,
+  Table2,
+  Wand2
 } from 'lucide-react';
+import type { ColumnMeta } from '@/lib/format';
+import QuickInsights from '@/components/preview/Quickinsights';
+import VirtualizedTable from '@/components/table/VirtualizedTable';
+
+// Tooltip Component
+const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div 
+      className="relative inline-block"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
+          {content}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function PreviewPage() {
   const router = useRouter();
-  const { data, columns, fileName, setData, resetData } = useDataStore();
+  const { data, columns, fileName, setData, reset } = useDataStore();
   const { showToast } = useToast();
-  const [isCleaningOpen, setIsCleaningOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const handleDataLoaded = (
     loadedData: any[],
-    loadedColumns: any[],
-    name: string
+    loadedColumns: ColumnMeta[],
+    loadedFileName: string
   ) => {
     setData({
       data: loadedData,
       columns: loadedColumns,
-      fileName: name,
+      fileName: loadedFileName,
       rows: loadedData.length,
+    });
+    showToast('success', 'داده‌ها با موفقیت بارگذاری شدند');
+  };
+
+  const handleCleanData = () => {
+    if (!data || data.length === 0) return;
+
+    const cleanedData = data.map((row) => {
+      const cleanedRow: any = {};
+      columns.forEach((col) => {
+        let value = row[col.name];
+        
+        // حذف whitespace اضافی
+        if (typeof value === 'string') {
+          value = value.trim();
+        }
+        
+        // تبدیل مقادیر خالی به null
+        if (value === '' || value === undefined) {
+          value = null;
+        }
+        
+        cleanedRow[col.name] = value;
+      });
+      return cleanedRow;
+    });
+
+    // حذف ردیف‌های کاملاً خالی
+    const filteredData = cleanedData.filter((row) =>
+      Object.values(row).some((val) => val !== null && val !== '')
+    );
+
+    setData({
+      data: filteredData,
+      rows: filteredData.length,
+    });
+
+    const removedRows = data.length - filteredData.length;
+    if (removedRows > 0) {
+      showToast(
+        'success',
+        `داده‌ها تمیز شدند. ${removedRows.toLocaleString('fa-IR')} ردیف خالی حذف شد`
+      );
+    } else {
+      showToast('success', 'داده‌ها تمیز شدند');
+    }
+  };
+
+  const handleClearData = () => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'حذف داده‌ها',
+      message: 'آیا مطمئن هستید که می‌خواهید تمام داده‌های بارگذاری شده را حذف کنید؟ این عمل قابل بازگشت نیست.',
+      onConfirm: () => {
+        reset();
+        showToast('success', 'داده‌ها با موفقیت حذف شدند');
+      },
     });
   };
 
@@ -48,33 +138,34 @@ export default function PreviewPage() {
 
     try {
       const headers = columns.map((col) => col.name).join(',');
-      const rows = data.map((row) =>
-        columns.map((col) => {
-          const value = row[col.name];
-          return typeof value === 'string' && value.includes(',')
-            ? `"${value}"`
-            : value ?? '';
-        }).join(',')
-      );
+      const rows = data
+        .map((row) =>
+          columns
+            .map((col) => {
+              const value = row[col.name];
+              const stringValue = value === null || value === undefined ? '' : String(value);
+              return `"${stringValue.replace(/"/g, '""')}"`;
+            })
+            .join(',')
+        )
+        .join('\n');
 
-      const csv = [headers, ...rows].join('\n');
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const csv = `${headers}\n${rows}`;
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = `cleaned-${fileName || 'data.csv'}`;
+      const url = URL.createObjectURL(blob);
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${fileName || 'data'}_cleaned.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
       link.click();
+      document.body.removeChild(link);
 
       showToast('success', 'فایل CSV با موفقیت دانلود شد');
     } catch (error) {
-      showToast('error', 'خطا در تولید فایل CSV');
+      showToast('error', 'خطا در دانلود فایل CSV');
       console.error(error);
-    }
-  };
-
-  const handleReset = () => {
-    if (confirm('آیا مطمئن هستید که می‌خواهید تمام داده‌ها را حذف کنید؟')) {
-      resetData();
-      showToast('success', 'داده‌ها پاک شدند');
     }
   };
 
@@ -82,135 +173,131 @@ export default function PreviewPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Navigation />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            بارگذاری و پیش‌نمایش داده
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Header - Compact */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+            بارگذاری و پیش‌نمایش
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            فایل خود را بارگذاری کنید و داده‌ها را مشاهده و تمیز کنید
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            فایل خود را بارگذاری کنید و داده‌ها را مشاهده کنید
           </p>
         </div>
 
-        {/* Upload Area */}
         {!data || data.length === 0 ? (
-          <Card className="mb-8">
-            <CardContent className="p-8">
+          <Card>
+            <CardContent className="p-6">
               <UploadDropzone onDataLoaded={handleDataLoaded} />
             </CardContent>
           </Card>
         ) : (
-          <>
-            {/* File Info Card */}
-            <Card className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
-              <CardContent className="p-6">
+          <div className="space-y-4">
+            {/* File Info Card - Compact */}
+            <Card className="border-2 border-blue-200 dark:border-blue-800">
+              <CardHeader className="pb-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="bg-blue-500 text-white p-3 rounded-lg">
-                      <FileText className="h-6 w-6" />
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                      <FileSpreadsheet className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900 dark:text-white text-lg">
-                        {fileName}
-                      </h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                      <CardTitle className="text-base">{fileName}</CardTitle>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
                         {data.length.toLocaleString('fa-IR')} ردیف × {columns.length} ستون
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setIsCleaningOpen(true)}
-                    >
-                      <Sparkles className="h-4 w-4 ml-2" />
-                      تمیزسازی
-                    </Button>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleExportCSV}
-                    >
-                      <Download className="h-4 w-4 ml-2" />
-                      خروجی CSV
-                    </Button>
+                    <Tooltip content="تمیزسازی">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCleanData}
+                      >
+                        <Wand2 className="h-4 w-4" />
+                      </Button>
+                    </Tooltip>
 
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => router.push('/builder')}
-                    >
-                      <TrendingUp className="h-4 w-4 ml-2" />
-                      ساخت داشبورد
-                    </Button>
+                    <Tooltip content="دانلود CSV">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportCSV}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </Tooltip>
 
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={handleReset}
-                    >
-                      <Trash2 className="h-4 w-4 ml-2" />
-                      حذف
-                    </Button>
+                    <Tooltip content="حذف داده‌ها">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={handleClearData}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </Tooltip>
                   </div>
                 </div>
-              </CardContent>
+              </CardHeader>
             </Card>
 
-            {/* Quick Insights */}
-            <div className="mb-6">
+            {/* Quick Insights - Compact */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="h-4 w-4 text-purple-500" />
+                <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                  بینش‌های سریع
+                </h2>
+              </div>
               <QuickInsights data={data} columns={columns} />
             </div>
 
             {/* Data Table */}
             <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <span>جدول داده</span>
-                  <span className="text-sm font-normal text-gray-500">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Table2 className="h-4 w-4 text-green-500" />
+                    <CardTitle className="text-base">جدول داده</CardTitle>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
                     نمایش {Math.min(100, data.length)} از {data.length.toLocaleString('fa-IR')} ردیف
-                  </span>
-                </CardTitle>
+                  </p>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
-                <VirtualizedTable data={data} columns={columns} />
+                <VirtualizedTable data={data} columns={columns} maxHeight={400} />
               </CardContent>
             </Card>
 
-            {/* Action Buttons */}
-            <div className="mt-6 flex justify-center gap-4">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  resetData();
-                  showToast('info', 'برای بارگذاری فایل جدید آماده هستید');
-                }}
-              >
-                <RefreshCw className="h-4 w-4 ml-2" />
-                بارگذاری فایل جدید
-              </Button>
-
+            {/* Action Button */}
+            <div className="flex justify-end">
               <Button
                 variant="primary"
                 size="lg"
-                onClick={() => router.push('/builder')}
+                onClick={() => router.push('/dashboard')}
+                className="px-6"
               >
-                ادامه به ساخت داشبورد
+                ادامه به داشبورد
                 <ArrowRight className="h-4 w-4 mr-2" />
               </Button>
             </div>
-          </>
+          </div>
         )}
       </div>
 
-      {/* Data Cleaning Dialog */}
-      <DataCleaningDialog
-        isOpen={isCleaningOpen}
-        onClose={() => setIsCleaningOpen(false)}
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText="حذف"
+        cancelText="انصراف"
+        type="danger"
       />
     </div>
   );

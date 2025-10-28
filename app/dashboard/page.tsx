@@ -4,9 +4,11 @@ import { useState, useRef } from 'react';
 import { useDashboard } from '@/contexts/DashboardContext';
 import { useDataStore } from '@/stores/dataStore';
 import Navigation from '@/components/Navigation';
+import DashboardBuilderModal from '@/components/dashboard/DashboardBuilderModal';
 import EChartCard from '@/components/charts/EChartCard';
 import Button from '@/components/ui/Button';
 import Card, { CardContent} from '@/components/ui/Card';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/toast';
 import { 
   Download, 
@@ -15,53 +17,67 @@ import {
   RefreshCw, 
   Grid3x3,
   LayoutDashboard,
-  FileDown 
+  FileText,
+  LayoutGrid,
+  LayoutList
 } from 'lucide-react';
-import { exportDashboardToPDF, exportMultipleChartsToPDF } from '@/lib/pdf-export-advanced';
+import { generateAdvancedReport } from '@/lib/pdf-export-advanced';
 import { useRouter } from 'next/navigation';
+
+// Tooltip Component
+const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div 
+      className="relative inline-block"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      {children}
+      {isVisible && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
+          {content}
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function DashboardPage() {
   const { charts, removeChart, clearCharts } = useDashboard();
-  const { data, columns } = useDataStore();
+  const { data, columns, fileName } = useDataStore();
   const { showToast } = useToast();
   const router = useRouter();
   const dashboardRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [isBuilderModalOpen, setIsBuilderModalOpen] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
-  const handleExportDashboard = async () => {
-    if (!dashboardRef.current) return;
-
-    setIsExporting(true);
-    try {
-      await exportDashboardToPDF(dashboardRef.current, {
-        filename: 'dashboard-report.pdf',
-        title: 'گزارش داشبورد',
-        includeHeader: true,
-        includeFooter: true,
-        headerText: 'داشبورد تحلیل داده',
-        footerText: 'تولید شده توسط BluVis Analytics',
-      });
-      showToast('success', 'داشبورد با موفقیت به PDF تبدیل شد');
-    } catch (error) {
-      showToast('error', 'خطا در تولید PDF');
-      console.error(error);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const handleExportAllCharts = async () => {
+  const handleExportAdvancedReport = async () => {
     if (charts.length === 0) {
-      showToast('warning', 'هیچ چارتی برای خروجی وجود ندارد');
+      showToast('warning', 'هیچ چارتی برای تولید گزارش وجود ندارد');
       return;
     }
 
     setIsExporting(true);
     try {
-      const chartElements = charts.map((chart, index) => ({
+      const chartElements = charts.map((chart) => ({
         element: document.getElementById(`chart-${chart.id}`) as HTMLElement,
         title: chart.title,
+        description: `تحلیل ${chart.yColumn} بر اساس ${chart.xColumn} با استفاده از نمودار ${chart.type}`,
       })).filter(item => item.element !== null);
 
       if (chartElements.length === 0) {
@@ -69,14 +85,44 @@ export default function DashboardPage() {
         return;
       }
 
-      await exportMultipleChartsToPDF(chartElements, {
-        filename: 'charts-collection.pdf',
-        title: 'مجموعه چارت‌ها',
+      const insights = [
+        {
+          key: 'حجم داده',
+          value: `مجموعاً ${data?.length.toLocaleString('fa-IR')} ردیف داده در ${columns?.length} ستون تحلیل شده است.`,
+        },
+        {
+          key: 'تنوع تحلیل',
+          value: `${charts.length} نمودار با ${new Set(charts.map(c => c.type)).size} نوع مختلف ایجاد شده است.`,
+        },
+        {
+          key: 'متغیرهای کلیدی',
+          value: `متغیرهای اصلی شامل: ${[...new Set(charts.map(c => c.yColumn))].slice(0, 3).join('، ')} می‌باشند.`,
+        },
+        {
+          key: 'پوشش داده',
+          value: `تحلیل بر روی ${Math.round((chartElements.length / (columns?.length || 1)) * 100)}% از ستون‌های موجود انجام شده است.`,
+        },
+      ];
+
+      await generateAdvancedReport({
+        filename: `bluvis-report-${Date.now()}.pdf`,
+        title: 'گزارش تحلیل داده',
+        subtitle: fileName || 'تحلیل جامع داده‌های بارگذاری شده',
+        companyName: 'BluVis Analytics',
+        dataStats: {
+          totalRows: data?.length || 0,
+          totalColumns: columns?.length || 0,
+          dateRange: new Date().toLocaleDateString('fa-IR'),
+          dataSource: fileName,
+        },
+        insights,
+        charts: chartElements,
+        includeTimestamp: true,
       });
-      
-      showToast('success', 'تمام چارت‌ها با موفقیت خروجی گرفته شد');
+
+      showToast('success', 'گزارش پیشرفته با موفقیت تولید شد');
     } catch (error) {
-      showToast('error', 'خطا در خروجی چارت‌ها');
+      showToast('error', 'خطا در تولید گزارش');
       console.error(error);
     } finally {
       setIsExporting(false);
@@ -84,10 +130,27 @@ export default function DashboardPage() {
   };
 
   const handleClearAll = () => {
-    if (confirm('آیا مطمئن هستید که می‌خواهید تمام چارت‌ها را حذف کنید؟')) {
-      clearCharts();
-      showToast('success', 'تمام چارت‌ها حذف شدند');
-    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'حذف تمام چارت‌ها',
+      message: 'آیا مطمئن هستید که می‌خواهید تمام چارت‌ها را حذف کنید؟ این عمل قابل بازگشت نیست.',
+      onConfirm: () => {
+        clearCharts();
+        showToast('success', 'تمام چارت‌ها حذف شدند');
+      },
+    });
+  };
+
+  const handleRemoveChart = (chartId: string) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'حذف چارت',
+      message: 'آیا مطمئن هستید که می‌خواهید این چارت را حذف کنید؟',
+      onConfirm: () => {
+        removeChart(chartId);
+        showToast('success', 'چارت حذف شد');
+      },
+    });
   };
 
   if (!data || data.length === 0) {
@@ -118,119 +181,121 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <Navigation />
       
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* Header - Compact */}
+        <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
                 داشبورد تحلیلی
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
-                {charts.length} چارت از {data.length.toLocaleString('fa-IR')} ردیف داده
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {charts.length} چارت از {data.length.toLocaleString('fa-IR')} ردیف
               </p>
             </div>
             
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setLayoutMode(layoutMode === 'grid' ? 'list' : 'grid')}
-              >
-                <Grid3x3 className="h-4 w-4 ml-2" />
-                {layoutMode === 'grid' ? 'لیست' : 'شبکه'}
-              </Button>
+              <Tooltip content={layoutMode === 'grid' ? 'نمایش لیستی' : 'نمایش شبکه‌ای'}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setLayoutMode(layoutMode === 'grid' ? 'list' : 'grid')}
+                >
+                  {layoutMode === 'grid' ? (
+                    <LayoutList className="h-4 w-4" />
+                  ) : (
+                    <LayoutGrid className="h-4 w-4" />
+                  )}
+                </Button>
+              </Tooltip>
               
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => router.push('/builder')}
-              >
-                <Plus className="h-4 w-4 ml-2" />
-                افزودن چارت
-              </Button>
+              <Tooltip content="افزودن چارت">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsBuilderModalOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </Tooltip>
 
               {charts.length > 0 && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleExportAllCharts}
-                    disabled={isExporting}
-                  >
-                    <FileDown className="h-4 w-4 ml-2" />
-                    خروجی همه
-                  </Button>
+                  <Tooltip content="گزارش PDF">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleExportAdvancedReport}
+                      disabled={isExporting}
+                    >
+                      {isExporting ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                      ) : (
+                        <FileText className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </Tooltip>
 
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleExportDashboard}
-                    disabled={isExporting}
-                  >
-                    <Download className="h-4 w-4 ml-2" />
-                    {isExporting ? 'در حال تولید...' : 'دانلود PDF'}
-                  </Button>
-
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    onClick={handleClearAll}
-                  >
-                    <Trash2 className="h-4 w-4 ml-2" />
-                    حذف همه
-                  </Button>
+                  <Tooltip content="حذف همه">
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={handleClearAll}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </Tooltip>
                 </>
               )}
             </div>
           </div>
 
-          {/* Stats Bar */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white">
-              <CardContent className="p-4">
+          {/* Stats Bar - Compact */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
+              <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm opacity-90">کل چارت‌ها</p>
-                    <p className="text-3xl font-bold">{charts.length}</p>
+                    <p className="text-xs opacity-90">کل چارت‌ها</p>
+                    <p className="text-2xl font-bold">{charts.length}</p>
                   </div>
-                  <LayoutDashboard className="h-10 w-10 opacity-80" />
+                  <LayoutDashboard className="h-8 w-8 opacity-80" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white">
-              <CardContent className="p-4">
+            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
+              <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm opacity-90">ردیف‌های داده</p>
-                    <p className="text-3xl font-bold">{data.length.toLocaleString('fa-IR')}</p>
+                    <p className="text-xs opacity-90">ردیف‌ها</p>
+                    <p className="text-2xl font-bold">{data.length.toLocaleString('fa-IR')}</p>
                   </div>
-                  <Grid3x3 className="h-10 w-10 opacity-80" />
+                  <Grid3x3 className="h-8 w-8 opacity-80" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white">
-              <CardContent className="p-4">
+            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0">
+              <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm opacity-90">ستون‌ها</p>
-                    <p className="text-3xl font-bold">{columns.length}</p>
+                    <p className="text-xs opacity-90">ستون‌ها</p>
+                    <p className="text-2xl font-bold">{columns.length}</p>
                   </div>
-                  <RefreshCw className="h-10 w-10 opacity-80" />
+                  <RefreshCw className="h-8 w-8 opacity-80" />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white">
-              <CardContent className="p-4">
+            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0">
+              <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm opacity-90">نوع چارت</p>
-                    <p className="text-3xl font-bold">{new Set(charts.map(c => c.type)).size}</p>
+                    <p className="text-xs opacity-90">نوع چارت</p>
+                    <p className="text-2xl font-bold">{new Set(charts.map(c => c.type)).size}</p>
                   </div>
-                  <FileDown className="h-10 w-10 opacity-80" />
+                  <FileText className="h-8 w-8 opacity-80" />
                 </div>
               </CardContent>
             </Card>
@@ -248,7 +313,7 @@ export default function DashboardPage() {
               <p className="text-gray-600 dark:text-gray-400 mb-6">
                 برای شروع، چارت‌های خود را اضافه کنید
               </p>
-              <Button onClick={() => router.push('/builder')} variant="primary">
+              <Button onClick={() => setIsBuilderModalOpen(true)} variant="primary">
                 <Plus className="h-4 w-4 ml-2" />
                 ساخت اولین چارت
               </Button>
@@ -259,8 +324,8 @@ export default function DashboardPage() {
             ref={dashboardRef}
             className={
               layoutMode === 'grid'
-                ? 'grid grid-cols-1 lg:grid-cols-2 gap-6'
-                : 'space-y-6'
+                ? 'grid grid-cols-1 lg:grid-cols-2 gap-4'
+                : 'space-y-4'
             }
           >
             {charts.map((chart) => (
@@ -276,11 +341,8 @@ export default function DashboardPage() {
                 <Button
                   variant="danger"
                   size="sm"
-                  onClick={() => {
-                    removeChart(chart.id);
-                    showToast('success', 'چارت حذف شد');
-                  }}
-                  className="absolute top-4 left-4 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleRemoveChart(chart.id)}
+                  className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -289,6 +351,24 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Dashboard Builder Modal */}
+      <DashboardBuilderModal
+        isOpen={isBuilderModalOpen}
+        onClose={() => setIsBuilderModalOpen(false)}
+      />
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={() => setConfirmDialog({ ...confirmDialog, isOpen: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        confirmText="تأیید"
+        cancelText="انصراف"
+        type="danger"
+      />
     </div>
   );
 }
