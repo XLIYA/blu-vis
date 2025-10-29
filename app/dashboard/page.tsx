@@ -11,7 +11,6 @@ import Card, { CardContent} from '@/components/ui/Card';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/toast';
 import { 
-  Download, 
   Plus, 
   Trash2, 
   RefreshCw, 
@@ -23,27 +22,6 @@ import {
 } from 'lucide-react';
 import { generateAdvancedReport } from '@/lib/pdf-export-advanced';
 import { useRouter } from 'next/navigation';
-
-// Tooltip Component
-const Tooltip = ({ children, content }: { children: React.ReactNode; content: string }) => {
-  const [isVisible, setIsVisible] = useState(false);
-
-  return (
-    <div 
-      className="relative inline-block"
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-      {children}
-      {isVisible && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
-          {content}
-          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
-        </div>
-      )}
-    </div>
-  );
-};
 
 export default function DashboardPage() {
   const { charts, removeChart, clearCharts } = useDashboard();
@@ -182,9 +160,9 @@ export default function DashboardPage() {
       <Navigation />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {/* Header - Compact */}
+        {/* Header با دکمه‌های بهبود یافته */}
         <div className="mb-6">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
                 داشبورد تحلیلی
@@ -194,65 +172,88 @@ export default function DashboardPage() {
               </p>
             </div>
             
-            <div className="flex gap-2">
-              <Tooltip content={layoutMode === 'grid' ? 'نمایش لیستی' : 'نمایش شبکه‌ای'}>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setLayoutMode(layoutMode === 'grid' ? 'list' : 'grid')}
-                >
-                  {layoutMode === 'grid' ? (
-                    <LayoutList className="h-4 w-4" />
-                  ) : (
-                    <LayoutGrid className="h-4 w-4" />
-                  )}
-                </Button>
-              </Tooltip>
-              
-              <Tooltip content="افزودن چارت">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsBuilderModalOpen(true)}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </Tooltip>
+            {/* دکمه‌های عملیات - مربعی و هم‌اندازه (مثل preview) */}
+            <div className="flex gap-3">
+              {/* دکمه تغییر نمایش */}
+              <button
+                onClick={() => setLayoutMode(layoutMode === 'grid' ? 'list' : 'grid')}
+                className="group relative flex items-center justify-center w-12 h-12 border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                aria-label={layoutMode === 'grid' ? 'نمایش لیستی' : 'نمایش شبکه‌ای'}
+              >
+                {layoutMode === 'grid' ? (
+                  <LayoutList className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                ) : (
+                  <LayoutGrid className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+                )}
+                
+                {/* Tooltip */}
+                <span className="absolute bottom-full mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  {layoutMode === 'grid' ? 'نمایش لیستی' : 'نمایش شبکه‌ای'}
+                  <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+                </span>
+              </button>
+
+              {/* دکمه افزودن چارت */}
+              <button
+                onClick={() => setIsBuilderModalOpen(true)}
+                className="group relative flex items-center justify-center w-12 h-12 border-2 border-blue-300 dark:border-blue-700 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                aria-label="افزودن چارت"
+              >
+                <Plus className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                
+                {/* Tooltip */}
+                <span className="absolute bottom-full mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  افزودن چارت
+                  <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+                </span>
+              </button>
 
               {charts.length > 0 && (
                 <>
-                  <Tooltip content="گزارش PDF">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={handleExportAdvancedReport}
-                      disabled={isExporting}
-                    >
-                      {isExporting ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                      ) : (
-                        <FileText className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </Tooltip>
+                  {/* دکمه گزارش PDF */}
+                  <button
+                    onClick={handleExportAdvancedReport}
+                    disabled={isExporting}
+                    className="group relative flex items-center justify-center w-12 h-12 border-2 border-green-300 dark:border-green-700 bg-white dark:bg-gray-800 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-xl transition-all duration-200 hover:scale-105 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    aria-label="گزارش PDF"
+                  >
+                    {isExporting ? (
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-green-600 border-t-transparent" />
+                    ) : (
+                      <FileText className="h-5 w-5 text-green-600 dark:text-green-400" />
+                    )}
+                    
+                    {/* Tooltip */}
+                    {!isExporting && (
+                      <span className="absolute bottom-full mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        دانلود گزارش PDF
+                        <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+                      </span>
+                    )}
+                  </button>
 
-                  <Tooltip content="حذف همه">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={handleClearAll}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </Tooltip>
+                  {/* دکمه حذف همه */}
+                  <button
+                    onClick={handleClearAll}
+                    className="group relative flex items-center justify-center w-12 h-12 border-2 border-red-300 dark:border-red-700 bg-white dark:bg-gray-800 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                    aria-label="حذف همه"
+                  >
+                    <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" />
+                    
+                    {/* Tooltip */}
+                    <span className="absolute bottom-full mb-2 px-3 py-1.5 bg-gray-900 dark:bg-gray-700 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                      حذف تمام چارت‌ها
+                      <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700" />
+                    </span>
+                  </button>
                 </>
               )}
             </div>
           </div>
 
-          {/* Stats Bar - Compact */}
+          {/* Stats Bar */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
+            <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0 shadow-lg">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -264,7 +265,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
+            <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0 shadow-lg">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -276,7 +277,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0">
+            <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0 shadow-lg">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -288,7 +289,7 @@ export default function DashboardPage() {
               </CardContent>
             </Card>
 
-            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0">
+            <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0 shadow-lg">
               <CardContent className="p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -304,7 +305,7 @@ export default function DashboardPage() {
 
         {/* Charts Grid */}
         {charts.length === 0 ? (
-          <Card className="text-center py-16">
+          <Card className="text-center py-16 border-2 border-gray-200 dark:border-gray-700">
             <CardContent>
               <LayoutDashboard className="h-16 w-16 text-gray-400 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
